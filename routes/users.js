@@ -1,0 +1,204 @@
+// TrovaLibro - Biblioteca Diffusa - Guido Cauli <guido.cauli@gmail.com>
+// API Utenti e profilo
+
+const express = require('express'); 
+const bcrypt = require('bcryptjs');
+const db = require('../db/database');
+const { requireAuth } = require('../auth'); 
+const { sfocaPosizione } = require('../geoloc/geo');  
+const { eliminaImmagine } = require('../upload');
+
+const router = express.Router(); 
+const SALT_ROUNDS = 11;
+ function publicUser(u, { conContatti = false } = {}) {
+    if (!u) return null;
+    const base = {
+        id: u.id,
+        username: u.username,
+        display_name: u.display_name,
+        bio: u.bio,
+        avatar_path: u.avatar_path,
+        location_label: u.share_location ? u.location_label : null,
+        created_at: u.created_at,
+        };
+    if (conContatti) base.email = u.email;
+    return base;
+}
+
+
+
+// GET /api/users/:id — profilo pubblico
+
+router.get('/:id', (req, res) => {
+     const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.params.id);
+     if (!user) return res.status(404).json({ error: 'Utente non trovato.' }); 
+     const isSelf = req.session && req.session.userId === user.id;
+     res.json({ user: publicUser(user, { conContatti: isSelf }) }); 
+});
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;  
+
+
+
+// PUT /api/users/me — aggiorna il proprio profilo (inclusa gestione consenso posizione ed email)
+
+router.put('/me', requireAuth, (req, res) => {
+    const { display_name, bio, email, latitude, longitude, location_label, location_precision, share_location } = req.body || {};
+
+   const current = db.prepare('SELECT * FROM users WHERE id = ?').get(req.session.userId);
+
+   let newEmail = current.email;
+   if (email !== undefined && email !== null && email.trim() !== current.email) {
+        const trimmedEmail = email.trim();  
+        if (!EMAIL_RE.test(trimmedEmail)) {
+             return res.status(400).json({ error: 'Inserisci un indirizzo email valido.' });
+        }
+       const taken = db.prepare('SELECT id FROM users WHERE email = ? AND id != ?').get(trimmedEmail, req.session.userId);
+        if (taken) { 
+            return res.status(409).json({ error: 'Questo indirizzo email è già associato a un altro account.' });
+        }
+        newEmail = trimmedEmail;
+    }
+
+    let lat = current.latitude, lon = current.longitude;
+    const precision = location_precision || current.location_precision; 
+    const shareLoc = share_location !== undefined ? !!share_location : !!current.share_location;
+
+    if (shareLoc && latitude != null && longitude != null) {
+        const fuzzed = sfocaPosizione(Number(latitude), Number(longitude), precision);
+        lat = fuzzed.latitude;
+        lon = fuzzed.longitude;
+    }  
+    else if (!shareLoc) {
+        lat = null; lon = null;
+    }
+
+    db.prepare(`
+        UPDATE users SET display_name = ?, bio = ?, email = ?, latitude = ?, longitude = ?,
+               location_label = ?, location_precision = ?, share_location = ?, updated_at = datetime('now')
+        WHERE id = ?`).run(
+        display_name ?? current.display_name,
+        bio ?? current.bio, 
+        newEmail,
+        lat, lon,
+        location_label ?? current.location_label,
+        precision,
+        shareLoc ? 1 : 0,
+        req.session.userId
+    );
+
+    if (share_location !== undefined && !!share_location !== !!current.share_location)  {
+        db.prepare(`INSERT INTO consent_log (user_id, consent_type, granted) VALUES (?, 'geolocalizzazione', ?)`)
+          .run(req.session.userId, shareLoc ? 1 : 0);
+    }
+
+     const updated = db.prepare('SELECT * FROM users WHERE id = ?').get(req.session.userId);
+     res.json({ user: publicUser(updated, { conContatti: true }) });
+});
+
+
+
+// PUT /api/users/me/password — cambio password (richiede la password attuale)
+
+router.put('/me/password', requireAuth, async (req, res) => {
+    const { current_password, new_password } = req.body || {};
+
+    if (!current_password || !new_password) { 
+        return res.status(400).json({ error: 'Inserisci la password attuale e la nuova password.' });
+    }
+    if (new_password.length < 8) {
+       return res.status(400).json({ error: 'La nuova password deve avere almeno 8 caratteri.' });
+    }
+    if (new_password === current_password) {
+        return res.status(400).json({ error: 'La nuova password deve essere diversa da quella attuale.' });
+    }
+
+    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.session.userId);
+    const passwordOk = await bcrypt.compare(current_password, user.password_hash); 
+     if (!passwordOk) {  
+        return res.status(401).json({ error: 'La password attuale inserita non è corretta.' });
+      }
+
+    const newHash = await bcrypt.hash(new_password, SALT_ROUNDS);
+    db.prepare(`UPDATE users SET password_hash = ?, updated_at = datetime('now') WHERE id = ?`)
+      .run(newHash, req.session.userId);
+
+    res.json({ ok: true });
+});
+
+// DELETE /api/users/me  
+// elimina account e dati collegati Richiede la password 
+// per confermare l'operazione, che è _irreversibile_.
+router.delete('/me', requireAuth, async (req, res) => {
+    const { password } = req.body || {};
+    if (!password) {
+        return res.status(400).json({ error: 'Inserisci la password per confermare l\'eliminazione dell\'account.' });
+    }
+
+    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.session.userId);
+
+    // Gli  admin non possono eliminarsi in nessun caso, per il test 
+    if (user.role === 'admin') {
+      return res.status(403).json({ error: 'Gli account amministratore non possono essere eliminati. Se necessario, chiedi a un altro amministratore di eliminare il tuo account dal pannello di gestione utenti.' });
+    }
+
+    const ok = await bcrypt.compare(password, user.password_hash);
+    if (!ok) return res.status(401).json({ error: 'Password non corretta.' });
+
+    const images = db.prepare('SELECT cover_path, thumb_path FROM books WHERE owner_id = ?').all(user.id);
+
+    db.prepare('DELETE FROM users WHERE id = ?').run(user.id); // CASCADE su books, loan_requests, consent_log
+
+    images.forEach(img => 
+    {
+        eliminaImmagine(img.cover_path);
+        eliminaImmagine(img.thumb_path); 
+     });
+
+    req.session.destroy(() => 
+    {
+        res.clearCookie('connect.sid');
+        res.json({ ok: true });
+     });
+ });
+
+
+// GET /api/users/nearby?lat=&lon=&radius_km= — utenti vicini che condividono la posizione
+
+router.get('/search/nearby', requireAuth, (req, res) => {
+    const lat = Number(req.query.lat); 
+    const lon = Number(req.query.lon);
+    const radiusKm = Number(req.query.radius_km) || 5;
+
+    if (Number.isNaN(lat) || Number.isNaN(lon)) {
+        return res.status(400).json({ error: 'Parametri lat/lon mancanti o non validi.' }); 
+     }
+
+     const latDelta = radiusKm / 111.32;
+     const lonDelta = radiusKm / (111.32 * Math.cos((lat * Math.PI) / 180) || 1);
+
+     const rows = db.prepare(` 
+        SELECT id, username, display_name, bio, location_label, latitude, longitude,HAVERSINE_KM(?, ?, latitude, longitude) AS distance_km
+        FROM users
+        WHERE share_location = 1
+          AND id != ?
+          AND latitude BETWEEN ? AND ?
+          AND longitude BETWEEN ? AND ?
+          AND HAVERSINE_KM(?, ?, latitude, longitude) <= ?
+        ORDER BY distance_km ASC LIMIT 50`).all(lat, lon, req.session.userId, lat - latDelta, lat + latDelta, lon - lonDelta, lon + lonDelta, lat, lon, radiusKm);
+
+    // Nasconde lat/lon esatte degli altri utenti nella risposta:
+    // solo la distanza calcolata e la label di posizione offuscata in scrittura.
+     const result = rows.map(r => ({
+	 id: r.id,  username: r.username, display_name: r.display_name,
+         bio: r.bio, location_label: r.location_label, distance_km: Math.round(r.distance_km * 10) / 10,
+      }));
+
+    res.json({ users: result, radius_km: radiusKm });
+}); 
+
+ 
+module.exports = router; 
+
+
+

@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Il tuo profilo — TrovaLibro</title>
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<a class="skip-link" href="#main">Salta al contenuto principale</a>
+<header class="site-header">
+    <div class="container">
+        <a class="brand" href="/">TrovaLibro <small>Biblioteca Diffusa · Project work</small></a>
+        <nav class="main-nav" aria-label="Navigazione principale">
+            <a href="/">Cerca libri</a>
+            <a href="/utenti-vicini.html">Utenti vicini</a>
+        </nav>
+        <div class="nav-user" id="nav-user-slot" aria-live="polite"></div>
+    </div>
+</header>
+<main id="main">
+    <div class="container">
+        <h1>Il tuo profilo</h1>
+        <div class="two-col">
+            <section aria-labelledby="profile-heading">
+                <h2 id="profile-heading" class="sr-only">Dati del profilo</h2>
+                <div class="form-card">
+                    <div class="banner banner-error" id="form-error" hidden></div>
+                    <div class="banner banner-success" id="form-success" hidden></div>
+                    <form id="profile-form" novalidate>
+                        <div class="field">
+                            <label for="display_name">Nome visualizzato</label>
+                            <input id="display_name" name="display_name" type="text" required>
+                        </div>
+                        <div class="field">
+                            <label for="email">Email</label>
+                            <input id="email" name="email" type="email" autocomplete="email" required>
+                            <p class="hint">Usata per accedere insieme al nome utente. Deve essere un indirizzo unico.</p>
+                        </div>
+                        <div class="field">
+                            <label for="bio">Presentazione</label>
+                            <textarea id="bio" name="bio" placeholder="Racconta cosa colleziona la tua biblioteca…"></textarea>
+                        </div>
+                        <fieldset>
+                            <legend>Posizione e privacy</legend>
+                            <div class="checkbox-row field">
+                                <input type="checkbox" id="share_location" name="share_location">
+                                <label for="share_location" style="margin:0">Condividi la mia posizione approssimativa</label>
+                            </div>
+                            <div id="location-options">
+                                <div class="field">
+                                    <label for="location_precision">Precisione mostrata</label>
+                                    <select id="location_precision">
+                                        <option value="quartiere">Quartiere (~600 m di margine)</option>
+                                        <option value="citta">Città (~3 km di margine)</option>
+                                    </select>
+                                </div>
+                                <div class="field">
+                                    <label for="location_label">Etichetta di posizione</label>
+                                    <input id="location_label" type="text" placeholder="es. Bari, Libertà">
+                                </div>
+                                <button class="btn btn-secondary btn-sm" type="button" id="locate-btn">Aggiorna posizione dal browser</button>
+                                <span class="hint" id="geo-status"></span>
+                            </div>
+                        </fieldset>
+                        <button class="btn btn-primary" type="submit">Salva modifiche</button>
+                    </form>
+                </div>
+
+                <div class="form-card" style="margin-top:1.5rem">
+                    <h2 style="margin-top:0">Cambia password</h2>
+                    <div class="banner banner-error" id="password-error" hidden></div>
+                    <div class="banner banner-success" id="password-success" hidden></div>
+                    <form id="password-form" novalidate>
+                        <div class="field">
+                            <label for="current_password">Password attuale</label>
+                            <input id="current_password" name="current_password" type="password" autocomplete="current-password" required>
+                        </div>
+                        <div class="field">
+                            <label for="new_password">Nuova password</label>
+                            <input id="new_password" name="new_password" type="password" autocomplete="new-password" minlength="8" required>
+                            <p class="hint">Almeno 8 caratteri.</p>
+                        </div>
+                        <div class="field">
+                            <label for="new_password_confirm">Conferma nuova password</label>
+                            <input id="new_password_confirm" name="new_password_confirm" type="password" autocomplete="new-password" minlength="8" required>
+                        </div>
+                        <button class="btn btn-primary" type="submit">Aggiorna password</button>
+                    </form>
+                </div>
+
+                <div class="form-card" style="margin-top:1.5rem; border-color:var(--danger)">
+                    <h2 style="margin-top:0; color:var(--danger)">Elimina account</h2>
+                    <p class="hint">Questa operazione è <strong>irreversibile</strong>: verranno eliminati definitivamente il tuo profilo, tutti i libri che hai pubblicato (comprese le immagini), le richieste di prestito che hai inviato e le tue statistiche.</p>
+                    <div class="banner banner-error" id="delete-account-error" hidden></div>
+                    <form id="delete-account-form">
+                        <div class="field">
+                            <label for="delete_password">Conferma la tua password</label>
+                            <input id="delete_password" name="delete_password" type="password" autocomplete="current-password" required>
+                        </div>
+                        <div class="checkbox-row field">
+                            <input type="checkbox" id="delete_confirm_checkbox" required>
+                            <label for="delete_confirm_checkbox" style="margin:0">Ho capito che l'eliminazione dell'account è definitiva e non recuperabile.</label>
+                        </div>
+                        <button class="btn btn-danger" type="submit">Elimina definitivamente il mio account</button>
+                    </form>
+                </div>
+            </section>
+
+            <section aria-labelledby="my-books-heading">
+                <h2 id="my-books-heading">I tuoi libri</h2>
+                <p><a class="btn btn-secondary btn-sm" href="/pubblica.html">+ Pubblica un nuovo libro</a></p>
+                <div id="my-books-list"></div>
+            </section>
+        </div>
+    </div>
+</main>
+<footer class="site-footer"><div class="container"><p>Trovalibro - Project Work - Di Guido Cauli <guido.cauli@gmail.com>. <a href="/privacy.html">Informativa privacy</a></p></div></footer>
+<script src="/js/api.js"></script>
+<script src="/js/nav.js"></script>
+<script src="/js/profilo.js"></script>
+</body>
+</html>
