@@ -1,7 +1,7 @@
 # TrovaLibro — Biblioteca Diffusa
 
 Project Work AA 2025-2026 - Traccia n.4 - PW n.14
-
+Guido Cauli - Matr.0312400037 - <guido.cauli@gmail.com>
 Versione 1.0  
 
 Prototipo di piattaforma web di geolocalizzazione per la condivisione di patrimoni librari privati (come ad esempio collezioni, biblioteche domestiche, raccolte tematiche). Ambito scelto per il prototipo: **quartieri della città di Bari** (dati di test distribuiti tra Bari centro, Murat, Libertà, Carrassi e il vicino comune di Bitonto).
